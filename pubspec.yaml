@@ -1,0 +1,45 @@
+name: mobile
+description: "A new Flutter project."
+# The following line prevents the package from being accidentally published to
+# pub.dev using `flutter pub publish`. This is preferred for private packages.
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.3
+
+# Dependencies specify other packages that your package needs in order to work.
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  
+  # --- Dépendances pour la Carte & l'Itinéraire ---
+  flutter_map: ^8.2.2
+  latlong2: ^0.9.1
+  http: ^1.6.0
+  geolocator: ^14.0.2
+
+  # --- Dépendances pour le Scanner d'Ordonnance (Option B) ---
+  google_mlkit_text_recognition: ^0.11.0
+  image_picker: ^1.0.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+# For information on the generic Dart part of this file, see the
+# following page: https://dart.dev/tools/pub/pubspec
+
+# La section "flutter" a été mise à jour
+flutter:
+
+  uses-material-design: true
+
+  # ✅ AJOUT : Déclaration des assets pour le logo (Splash Screen)
+  assets:
+    - assets/images/

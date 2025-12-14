@@ -1,0 +1,31 @@
+# Fichiers générés par Flutter
+/build
+/.dart_tool
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.idea/libraries
+
+# Fichiers de dépendances et de packages
+/ios/.symlinks
+/ios/Flutter/Generated.xcconfig
+/android/.gradle
+/android/local.properties
+
+# Dépendances natives (lourdes)
+/android/app/build
+/android/app/.cxx
+/android/app/src/main/assets/flutter_assets
+/android/app/src/main/kotlin/com/example/flutter_module_example
+/android/app/src/main/java/com/example/flutter_module_example
+/android/gradle-wrapper.jar
+
+# Fichiers spécifiques à l'OS
+.DS_Store
+Thumbs.db
+
+# Fichiers d'erreurs et de logs
+*.log
+
+# Fichiers secrets ou credentials (à ajouter si vous en utilisez)
+credentials.json
