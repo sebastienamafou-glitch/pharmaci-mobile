@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart'; 
 import 'package:latlong2/latlong.dart';
+import 'package:geolocator/geolocator.dart'; // <--- Nouvel import ajouté
+
 import 'api_service.dart';
 import 'auth_screen.dart';
 import 'scanner_screen.dart';
@@ -38,6 +40,7 @@ class _HomePageState extends State<HomePage> {
   final MapController mapController = MapController();
   final TextEditingController searchController = TextEditingController();
 
+  // Position par défaut (Abidjan)
   LatLng center = LatLng(5.3600, -4.0083);
   List<Marker> markers = [];
   List<LatLng> routePoints = [];
@@ -46,12 +49,62 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    // Au lieu de charger direct, on demande le GPS d'abord
+    _obtenirPositionEtCharger();
+  }
+
+  // --- NOUVELLE MÉTHODE GÉOLOCALISATION ---
+  Future<void> _obtenirPositionEtCharger() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    // Vérifie si le GPS est activé
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      // Si GPS éteint, on charge la position par défaut (Abidjan)
+      _chargerPharmacies(); 
+      return;
+    }
+
+    // Vérifie les permissions
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        _chargerPharmacies(); // Refusé ? On charge par défaut
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      // Permissions définitivement refusées, on charge par défaut
+      _chargerPharmacies();
+      return;
+    }
+
+    // ✅ On a la vraie position !
+    Position positionReelle = await Geolocator.getCurrentPosition();
+    
+    if (!mounted) return;
+
+    setState(() {
+      // On met à jour le centre de la carte
+      center = LatLng(positionReelle.latitude, positionReelle.longitude);
+      // On déplace la caméra de la carte
+      mapController.move(center, 15.0);
+    });
+
+    // On cherche les pharmacies autour de cette NOUVELLE position
     _chargerPharmacies();
   }
 
+  // --- MÉTHODE MISE À JOUR ---
   void _chargerPharmacies() async {
+    // On utilise 'center' qui est soit Abidjan (défaut), soit le GPS (si trouvé)
     final pharmacies = await api.trouverProches(center);
+    
     if (!mounted) return;
+    
     setState(() {
       markers = pharmacies.map((p) {
         return Marker(
@@ -61,6 +114,8 @@ class _HomePageState extends State<HomePage> {
           child: const Icon(Icons.location_on, color: Colors.green, size: 40),
         );
       }).toList();
+      
+      // Ajout de notre position (Bleu)
       markers.add(
         Marker(
           point: center,
@@ -200,7 +255,6 @@ class _HomePageState extends State<HomePage> {
 
             mapController.move(center, 13.5);
 
-            // ✅ NOUVEAU : Affichage du Code de Retrait (Mandat)
             showDialog(
                 context: context,
                 barrierDismissible: false,
@@ -219,7 +273,6 @@ class _HomePageState extends State<HomePage> {
                         Text("La ${demandeData['pharmacieNom']} a validé votre demande."),
                         const SizedBox(height: 20),
                         
-                        // --- LE BLOC CODE MANDAT ---
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(15),
@@ -233,7 +286,7 @@ class _HomePageState extends State<HomePage> {
                               const Text("CODE DE RETRAIT", style: TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.bold)),
                               const SizedBox(height: 5),
                               Text(
-                                demandeData['codeRetrait'] ?? '----', // Affiche le code
+                                demandeData['codeRetrait'] ?? '----',
                                 style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 5, color: Colors.black87),
                               ),
                               const SizedBox(height: 5),
@@ -241,7 +294,6 @@ class _HomePageState extends State<HomePage> {
                             ],
                           ),
                         ),
-                        // ---------------------------
                         const SizedBox(height: 10),
                         const Text("Mode de paiement :", style: TextStyle(fontSize: 12, color: Colors.grey)),
                         Text(demandeData['modePaiement'] ?? 'Non spécifié', style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -316,8 +368,8 @@ class _HomePageState extends State<HomePage> {
                           hintText: AppStrings.searchHint,
                           border: InputBorder.none,
                           suffixIcon: kIsWeb 
-                              ? null // Si on est sur le Web, pas d'icône caméra
-                              : IconButton( // Sinon (Android), on affiche la caméra
+                              ? null 
+                              : IconButton(
                                   icon: const Icon(Icons.camera_alt, color: Colors.teal),
                                   onPressed: _ouvrirScanner,
                                 ),

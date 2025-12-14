@@ -79,8 +79,21 @@ class _AuthScreenState extends State<AuthScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.local_pharmacy, size: 80, color: Color(0xFF00BFA6)),
-              const SizedBox(height: 20),
+              const SizedBox(height: 60), // Espace en haut de l'écran
+
+              // ✅ VOTRE NOUVEAU LOGO ICI
+              Center(
+                child: SizedBox(
+                  height: 120, // Une taille un peu plus petite que sur le splash screen
+                  child: Image.asset(
+                    'assets/images/logo.png',
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+              
+              const SizedBox(height: 40), // Espace avant le titre ou les champs
+
               Text(
                 isLogin ? "Bon retour !" : "Créer un compte",
                 style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF00BFA6)),
