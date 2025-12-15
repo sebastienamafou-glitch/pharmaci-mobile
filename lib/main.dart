@@ -2,7 +2,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart'; 
 import 'package:latlong2/latlong.dart';
-import 'package:geolocator/geolocator.dart'; // <--- Nouvel import ajouté
+import 'package:geolocator/geolocator.dart';
+import 'package:flutter_typeahead/flutter_typeahead.dart'; // 👈 IMPORT CRUCIAL
 
 import 'api_service.dart';
 import 'auth_screen.dart';
@@ -49,58 +50,46 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    // Au lieu de charger direct, on demande le GPS d'abord
     _obtenirPositionEtCharger();
   }
 
-  // --- NOUVELLE MÉTHODE GÉOLOCALISATION ---
   Future<void> _obtenirPositionEtCharger() async {
     bool serviceEnabled;
     LocationPermission permission;
 
-    // Vérifie si le GPS est activé
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      // Si GPS éteint, on charge la position par défaut (Abidjan)
       _chargerPharmacies(); 
       return;
     }
 
-    // Vérifie les permissions
     permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        _chargerPharmacies(); // Refusé ? On charge par défaut
+        _chargerPharmacies();
         return;
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
-      // Permissions définitivement refusées, on charge par défaut
       _chargerPharmacies();
       return;
     }
 
-    // ✅ On a la vraie position !
     Position positionReelle = await Geolocator.getCurrentPosition();
     
     if (!mounted) return;
 
     setState(() {
-      // On met à jour le centre de la carte
       center = LatLng(positionReelle.latitude, positionReelle.longitude);
-      // On déplace la caméra de la carte
       mapController.move(center, 15.0);
     });
 
-    // On cherche les pharmacies autour de cette NOUVELLE position
     _chargerPharmacies();
   }
 
-  // --- MÉTHODE MISE À JOUR ---
   void _chargerPharmacies() async {
-    // On utilise 'center' qui est soit Abidjan (défaut), soit le GPS (si trouvé)
     final pharmacies = await api.trouverProches(center);
     
     if (!mounted) return;
@@ -115,7 +104,6 @@ class _HomePageState extends State<HomePage> {
         );
       }).toList();
       
-      // Ajout de notre position (Bleu)
       markers.add(
         Marker(
           point: center,
@@ -134,11 +122,13 @@ class _HomePageState extends State<HomePage> {
     );
     if (resultatTexte != null && resultatTexte is String) {
       setState(() { searchController.text = resultatTexte; });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text(AppStrings.scannerSnack)));
+      // On lance la recherche auto après le scan
+      _lancerRechercheManuelle(); 
     }
   }
 
-  void _lancerRecherche() async {
+  // Gardé pour le bouton loupe ou validation manuelle
+  void _lancerRechercheManuelle() async {
     if (searchController.text.length < 2) return;
     
     setState(() => rechercheEnCours = true);
@@ -150,6 +140,8 @@ class _HomePageState extends State<HomePage> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text(AppStrings.notFound)));
       return;
     }
+    // Si on a des résultats, on prend le premier ou on affiche une liste
+    // Pour simplifier ici, on affiche la liste
     _afficherResultats(resultats);
   }
 
@@ -162,16 +154,14 @@ class _HomePageState extends State<HomePage> {
           itemBuilder: (ctx, i) {
             final med = meds[i];
             return ListTile(
-              leading: const Icon(Icons.medication),
-              title: Text(med.nom),
-              subtitle: Text(med.forme),
-              trailing: ElevatedButton(
-                child: const Text(AppStrings.btnSelect),
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _demanderModePaiement(med);
-                },
-              ),
+              leading: const CircleAvatar(backgroundColor: Colors.teal, child: Icon(Icons.medication, color: Colors.white)),
+              title: Text(med.nom, style: const TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: Text("${med.dci} • ${med.forme}"),
+              trailing: Text("${med.prix ?? '-'} FCFA", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _demanderModePaiement(med);
+              },
             );
           },
         );
@@ -184,7 +174,16 @@ class _HomePageState extends State<HomePage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text(AppStrings.payTitle),
-        content: const Text(AppStrings.payContent),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("Commande : ${med.nom}"),
+            if(med.prix != null) Text("Prix estimé : ${med.prix} FCFA", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+            const SizedBox(height: 15),
+            const Text(AppStrings.payContent),
+          ],
+        ),
         actions: [
           TextButton.icon(
             icon: const Icon(Icons.card_membership),
@@ -209,6 +208,7 @@ class _HomePageState extends State<HomePage> {
 
   void _envoyerDemande(Medicament med, String modePaiement) async {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("${AppStrings.searching} ($modePaiement)")));
+    // On envoie le nom commercial complet (ex: Doliprane 1000mg)
     final idDemande = await api.envoyerDemande(med.nom, center, modePaiement);
     
     if (idDemande != null) {
@@ -259,11 +259,11 @@ class _HomePageState extends State<HomePage> {
                 context: context,
                 barrierDismissible: false,
                 builder: (_) => AlertDialog(
-                    title: Row(
+                    title: const Row(
                       children: [
-                        const Icon(Icons.check_circle, color: Colors.green),
-                        const SizedBox(width: 10),
-                        const Expanded(child: Text("C'est trouvé !", style: TextStyle(fontSize: 18))),
+                        Icon(Icons.check_circle, color: Colors.green),
+                        SizedBox(width: 10),
+                        Expanded(child: Text("C'est trouvé !", style: TextStyle(fontSize: 18))),
                       ],
                     ),
                     content: Column(
@@ -300,17 +300,6 @@ class _HomePageState extends State<HomePage> {
                       ],
                     ),
                     actions: [
-                      TextButton.icon(
-                        icon: const Icon(Icons.copy, size: 16),
-                        label: const Text("Copier mandat Livreur"),
-                        onPressed: () {
-                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                             content: Text("Code copié ! Envoyez-le à votre livreur."),
-                             backgroundColor: Colors.green,
-                             duration: Duration(seconds: 2),
-                           ));
-                        },
-                      ),
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
                         onPressed: () => Navigator.pop(context), 
@@ -353,35 +342,66 @@ class _HomePageState extends State<HomePage> {
               MarkerLayer(markers: markers),
             ],
           ),
+          
+          // ✅ BARRE DE RECHERCHE INTELLIGENTE
           Positioned(
             top: 50, left: 15, right: 15,
             child: Card(
               elevation: 4,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                 child: Row(
                   children: [
                     Expanded(
-                      child: TextField(
+                      child: TypeAheadField<Medicament>(
                         controller: searchController,
-                        decoration: InputDecoration(
-                          hintText: AppStrings.searchHint,
-                          border: InputBorder.none,
-                          suffixIcon: kIsWeb 
-                              ? null 
-                              : IconButton(
-                                  icon: const Icon(Icons.camera_alt, color: Colors.teal),
-                                  onPressed: _ouvrirScanner,
-                                ),
+                        builder: (context, controller, focusNode) {
+                          return TextField(
+                              controller: controller,
+                              focusNode: focusNode,
+                              autofocus: false,
+                              decoration: InputDecoration(
+                                hintText: AppStrings.searchHint,
+                                border: InputBorder.none,
+                                icon: const Icon(Icons.search, color: Colors.teal),
+                                suffixIcon: kIsWeb 
+                                  ? null 
+                                  : IconButton(
+                                      icon: const Icon(Icons.camera_alt, color: Colors.teal),
+                                      onPressed: _ouvrirScanner,
+                                    ),
+                              ),
+                          );
+                        },
+                        suggestionsCallback: (pattern) async {
+                          // Appelle votre Backend via api_service
+                          return await api.rechercherMedicaments(pattern);
+                        },
+                        itemBuilder: (context, suggestion) {
+                          // Affichage d'une ligne de suggestion
+                          return ListTile(
+                            leading: const Icon(Icons.medication_liquid, color: Colors.teal),
+                            title: Text(suggestion.nom, style: const TextStyle(fontWeight: FontWeight.bold)),
+                            subtitle: Text(suggestion.description), // DCI + Forme
+                            trailing: Text("${suggestion.prix ?? '?'} F", style: const TextStyle(color: Colors.green, fontSize: 12)),
+                          );
+                        },
+                        onSelected: (suggestion) {
+                          // Quand on clique sur un médicament
+                          searchController.text = suggestion.nom;
+                          _demanderModePaiement(suggestion); // On lance la commande direct !
+                        },
+                        emptyBuilder: (context) => const Padding(
+                          padding: EdgeInsets.all(10),
+                          child: Text('Aucun médicament trouvé.', style: TextStyle(color: Colors.grey)),
+                        ),
+                        loadingBuilder: (context) => const Padding(
+                          padding: EdgeInsets.all(10),
+                          child: LinearProgressIndicator(color: Colors.teal),
                         ),
                       ),
                     ),
-                    rechercheEnCours 
-                      ? const Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator(strokeWidth: 2))
-                      : IconButton(
-                          icon: const Icon(Icons.search, color: Colors.teal),
-                          onPressed: _lancerRecherche,
-                        ),
                   ],
                 ),
               ),

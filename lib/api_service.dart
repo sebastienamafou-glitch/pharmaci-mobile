@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
 class ApiService {
-  // ⚠️ Assurez-vous que cette URL est bien la vôtre (sans slash à la fin)
+  // ✅ Votre URL Backend (Render)
   static const String baseUrl = 'https://pharmaci-backend.onrender.com';
 
   static String? token; 
@@ -54,37 +54,37 @@ class ApiService {
     } catch (e) { return []; }
   }
 
-  // --- RECHERCHE INTELLIGENTE (CORRECTION MAJEURE) ---
+  // --- RECHERCHE INTELLIGENTE (LIVE) ---
 
   Future<List<Medicament>> rechercherMedicaments(String query) async {
     if (query.length < 2) return [];
 
-    // 1. On essaie de demander au serveur (si vous avez une vraie DB de médicaments plus tard)
-    /*
+    // ✅ VRAIE CONNEXION AU BACKEND NESTJS + MEILISEARCH
     final url = Uri.parse('$baseUrl/medicaments/recherche?q=$query');
+    
     try {
       final response = await http.get(url);
+      
       if (response.statusCode == 200) {
-         // ... traitement normal ...
-      }
-    } catch (e) {}
-    */
+         // Le backend renvoie : { "hits": [ ... ], ... } ou directement [ ... ] selon la config Meili
+         // Avec votre code backend actuel, il renvoie directement un tableau
+         final dynamic data = json.decode(response.body);
+         
+         // Gestion flexible (si Meili renvoie un objet wrapper ou une liste directe)
+         List<dynamic> listeHits = [];
+         if (data is List) {
+           listeHits = data;
+         } else if (data['hits'] != null) {
+           listeHits = data['hits'];
+         }
 
-    // 2. ASTUCE MVP : Le "Free-Text"
-    // Au lieu de bloquer si on ne trouve rien, on renvoie le texte tapé comme une option valide.
-    // Cela permet au Ministre de commander "Doliprane", "Paracetamol", ou "Truc pour la tête".
-    // L'appli pensera que c'est un résultat venant du serveur.
-    
-    await Future.delayed(const Duration(milliseconds: 500)); // Petit délai pour faire "réel"
-    
-    return [
-      Medicament(
-        id: 0, 
-        nom: query, // On reprend exactement ce que l'utilisateur a tapé
-        description: "Disponible pour commande immédiate", 
-        forme: "Standard"
-      )
-    ];
+         return listeHits.map((json) => Medicament.fromJson(json)).toList();
+      }
+      return [];
+    } catch (e) {
+      print("Erreur recherche: $e");
+      return [];
+    }
   }
 
   // --- COMMANDES ---
@@ -92,10 +92,9 @@ class ApiService {
   Future<String?> envoyerDemande(String nomMedicament, LatLng position, String modePaiement) async {
     final url = Uri.parse('$baseUrl/demandes');
     
-    // On sécurise l'envoi
     final headers = {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer $token',
+      if (token != null) 'Authorization': 'Bearer $token',
     };
 
     try {
@@ -112,7 +111,7 @@ class ApiService {
       
       if (response.statusCode == 201) {
         final data = json.decode(response.body);
-        return data['id'];
+        return data['id']; // Le backend doit renvoyer l'ID créé
       }
       return null;
     } catch (e) { return null; }
@@ -129,10 +128,9 @@ class ApiService {
     return null;
   }
 
-  // --- ITINERAIRE (ROUTING) ---
+  // --- ITINERAIRE ---
   
   Future<List<LatLng>> getItineraire(LatLng depart, LatLng arrivee) async {
-    // Utilisation du service public OSRM (Gratuit, pas de clé API requise pour la démo)
     final url = Uri.parse(
       'http://router.project-osrm.org/route/v1/driving/${depart.longitude},${depart.latitude};${arrivee.longitude},${arrivee.latitude}?overview=full&geometries=geojson'
     );
@@ -142,7 +140,6 @@ class ApiService {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         final List<dynamic> coords = data['routes'][0]['geometry']['coordinates'];
-        // OSRM renvoie [lon, lat], FlutterMap veut [lat, lon]
         return coords.map((p) => LatLng(p[1].toDouble(), p[0].toDouble())).toList();
       }
     } catch (e) {}
@@ -150,7 +147,7 @@ class ApiService {
   }
 }
 
-// --- MODÈLES DE DONNÉES ---
+// --- MODÈLES DE DONNÉES MIS À JOUR ---
 
 class Pharmacie {
   final String id, nom;
@@ -161,7 +158,7 @@ class Pharmacie {
         ? json['position']['coordinates'] 
         : [0.0, 0.0];
     return Pharmacie(
-      id: json['id'] ?? '0', 
+      id: json['id']?.toString() ?? '0', 
       nom: json['nom'] ?? 'Pharmacie Partenaire', 
       position: LatLng(coords[1], coords[0])
     );
@@ -170,16 +167,33 @@ class Pharmacie {
 
 class Medicament {
   final int id;
-  final String nom, description, forme;
-  Medicament({required this.id, required this.nom, required this.description, required this.forme});
+  final String nomCommercial; // Ex: DOLIPRANE
+  final String dci;           // Ex: Paracétamol
+  final String forme;         // Ex: Comprimé
+  final String dosage;        // Ex: 1000mg
+  final num? prix;            // Ex: 1500 (Peut être null)
+
+  Medicament({
+    required this.id, 
+    required this.nomCommercial, 
+    required this.dci, 
+    required this.forme,
+    required this.dosage,
+    this.prix
+  });
   
-  // Plus robuste contre les erreurs de format
+  // Getter pour compatibilité avec l'ancien code si besoin
+  String get nom => "$nomCommercial $dosage"; 
+  String get description => "$dci - $forme";
+
   factory Medicament.fromJson(Map<String, dynamic> json) {
     return Medicament(
       id: json['id'] is int ? json['id'] : int.tryParse(json['id'].toString()) ?? 0, 
-      nom: json['nom'] ?? '', 
-      description: json['description'] ?? '', 
-      forme: json['forme'] ?? ''
+      nomCommercial: json['nomCommercial'] ?? json['nom'] ?? 'Inconnu', // Fallback si ancien format
+      dci: json['dci'] ?? '', 
+      forme: json['forme'] ?? '',
+      dosage: json['dosage'] ?? '',
+      prix: json['prixReference'] // Le backend envoie 'prixReference'
     );
   }
 }
