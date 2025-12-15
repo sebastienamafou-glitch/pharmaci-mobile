@@ -15,9 +15,9 @@ dependencies:
   cupertino_icons: ^1.0.8
 
   # --- Carte & GPS ---
-  flutter_map: ^6.0.0      # Version stable standard (vérifiez si vous voulez la v8, mais la v6 est plus sûre pour ce code)
+  flutter_map: ^6.0.0      
   latlong2: ^0.9.1
-  geolocator: ^10.1.0      # On garde la version compatible standard
+  geolocator: ^10.1.0      
   
   # --- Réseau ---
   http: ^1.1.0
