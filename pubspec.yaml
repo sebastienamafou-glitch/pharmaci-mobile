@@ -10,31 +10,31 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  
+  # --- Réseau & Stockage ---
+  http: ^1.1.0
+  shared_preferences: ^2.2.0 # ✅ Ajouté pour gérer le Token et l'Abonnement
 
   # --- Icônes ---
   cupertino_icons: ^1.0.8
 
   # --- Carte & GPS ---
-  flutter_map: ^6.0.0      
+  flutter_map: ^8.2.2      
   latlong2: ^0.9.1
-  geolocator: ^10.1.0      
-  
-  # --- Réseau ---
-  http: ^1.1.0
+  geolocator: ^14.0.2      
 
   # --- Caméra & IA ---
-  google_mlkit_text_recognition: ^0.11.0
+  google_mlkit_text_recognition: ^0.15.0
   image_picker: ^1.0.4
   flutter_typeahead: ^5.2.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.0
+  flutter_lints: ^6.0.0
 
 flutter:
   uses-material-design: true
-
-  # ✅ VOS ASSETS (IMAGES)
+  
   assets:
     - assets/images/
