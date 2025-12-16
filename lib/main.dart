@@ -6,13 +6,11 @@ import 'package:flutter_typeahead/flutter_typeahead.dart';
 
 // Nos écrans et services
 import 'api_service.dart';
-import 'checkout_screen.dart'; // ✅ Écran de commande
-import 'scanner_screen.dart';  // ✅ Écran Scanner
+import 'checkout_screen.dart'; 
+import 'scanner_screen.dart';  
 import 'strings.dart';
-
-// Si vous avez un fichier séparé pour SubscriptionScreen, décommentez l'import ci-dessous
-// et supprimez la classe dummy "SubscriptionScreen" tout en bas de ce fichier.
-// import 'subscription_screen.dart'; 
+import 'subscription_screen.dart';
+import 'ads_banner.dart'; // ✅ AJOUT : Import de la bannière
 
 void main() {
   runApp(const PharmaCiApp());
@@ -44,10 +42,8 @@ class _HomePageState extends State<HomePage> {
   final MapController mapController = MapController();
   final TextEditingController searchController = TextEditingController();
 
-  // Pour contrôler l'ouverture du Drawer manuellement
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  // Position par défaut (Abidjan)
   LatLng center = LatLng(5.3600, -4.0083);
   List<Marker> markers = [];
 
@@ -57,10 +53,7 @@ class _HomePageState extends State<HomePage> {
     _obtenirPositionEtCharger();
   }
 
-  // ------------------------------------------------------------------------
-  // 📍 GESTION DE LA CARTE ET LOCALISATION
-  // ------------------------------------------------------------------------
-
+  // --- CARTE & GPS ---
   Future<void> _obtenirPositionEtCharger() async {
     bool serviceEnabled;
     LocationPermission permission;
@@ -101,7 +94,6 @@ class _HomePageState extends State<HomePage> {
     if (!mounted) return;
 
     setState(() {
-      // Ajout de ma position (Bleu)
       markers = [
         Marker(
           point: center,
@@ -110,19 +102,13 @@ class _HomePageState extends State<HomePage> {
           child: const Icon(Icons.person_pin_circle, color: Colors.blue, size: 40),
         ),
       ];
-      // Ici, on pourrait ajouter les marqueurs des pharmacies (Vert)
     });
   }
 
-  // ------------------------------------------------------------------------
-  // 🚀 NAVIGATION
-  // ------------------------------------------------------------------------
-
+  // --- NAVIGATION ---
   void _lancerCommande(String nomMedicament) {
     if (nomMedicament.isEmpty) return;
-
     searchController.clear();
-
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -136,21 +122,16 @@ class _HomePageState extends State<HomePage> {
       context,
       MaterialPageRoute(builder: (context) => const ScannerScreen()),
     );
-
     if (resultatTexte != null && resultatTexte is String && resultatTexte.length > 2) {
       _lancerCommande(resultatTexte);
     }
   }
 
-  // ------------------------------------------------------------------------
-  // 📱 INTERFACE UTILISATEUR
-  // ------------------------------------------------------------------------
-
+  // --- UI ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      key: _scaffoldKey, // Clé nécessaire pour ouvrir le drawer via le bouton
-      // ✅ MENU LATÉRAL (DRAWER)
+      key: _scaffoldKey,
       drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
@@ -166,7 +147,7 @@ class _HomePageState extends State<HomePage> {
               leading: const Icon(Icons.diamond, color: Colors.purple),
               title: const Text("Offre Santé+ (Premium)"),
               onTap: () {
-                Navigator.pop(context); // Fermer le drawer
+                Navigator.pop(context); 
                 Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -177,18 +158,15 @@ class _HomePageState extends State<HomePage> {
             ListTile(
               leading: const Icon(Icons.exit_to_app, color: Colors.red),
               title: const Text("Déconnexion"),
-              onTap: () {
-                // Logique de déconnexion
-              },
+              onTap: () { },
             ),
           ],
         ),
       ),
       
-      // ✅ CORPS DE LA PAGE (Stack : Carte + Barre de recherche)
       body: Stack(
         children: [
-          // 1. LA CARTE
+          // 1. Fond de carte
           FlutterMap(
             mapController: mapController,
             options: MapOptions(
@@ -204,7 +182,7 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
 
-          // 2. BARRE DE RECHERCHE FLOTTANTE
+          // 2. Barre de recherche (Positioned Top 50)
           Positioned(
             top: 50,
             left: 15,
@@ -231,16 +209,12 @@ class _HomePageState extends State<HomePage> {
                             decoration: InputDecoration(
                               hintText: AppStrings.searchHint,
                               border: InputBorder.none,
-                              
-                              // ✅ BOUTON MENU (Ouvre le Drawer)
                               prefixIcon: IconButton(
                                 icon: const Icon(Icons.menu, color: Colors.teal),
                                 onPressed: () {
                                   _scaffoldKey.currentState?.openDrawer();
                                 },
                               ),
-
-                              // ✅ BOUTON SCANNER
                               suffixIcon: IconButton(
                                 icon: const Icon(Icons.camera_alt,
                                     color: Colors.teal),
@@ -294,30 +268,22 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           ),
+
+          // 3. ✅ AJOUT : Bannière Publicitaire (Positioned Top 130)
+          const Positioned(
+            top: 130, 
+            left: 0, 
+            right: 0,
+            child: AdsBanner(),
+          ),
         ],
       ),
       
-      // Bouton Flottant (Raccourci Scanner)
       floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.redAccent,
-        child: const Icon(Icons.document_scanner, color: Colors.white),
         onPressed: _ouvrirScanner,
+        child: const Icon(Icons.document_scanner, color: Colors.white),
       ),
-    );
-  }
-}
-
-// ------------------------------------------------------------------------
-// 🛠️ CLASSE TEMPORAIRE (Si SubscriptionScreen n'existe pas encore)
-// ------------------------------------------------------------------------
-class SubscriptionScreen extends StatelessWidget {
-  const SubscriptionScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Offre Santé+")),
-      body: const Center(child: Text("Page d'abonnement en construction")),
-    );
-  }
+    ); 
+  } 
 }

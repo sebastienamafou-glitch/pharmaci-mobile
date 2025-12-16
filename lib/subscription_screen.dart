@@ -1,7 +1,5 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'user_service.dart'; // ✅ Import du service
 
 class SubscriptionScreen extends StatefulWidget {
   const SubscriptionScreen({Key? key}) : super(key: key);
@@ -12,64 +10,34 @@ class SubscriptionScreen extends StatefulWidget {
 
 class _SubscriptionScreenState extends State<SubscriptionScreen> {
   bool _isLoading = false;
+  
+  // Instanciation du service pour gérer l'API
+  final UserService _userService = UserService();
 
-  // ⚠️ MODIFIEZ ICI : Mettez l'URL réelle de votre API NestJS
-  // Si vous testez sur émulateur Android, utilisez 10.0.2.2 au lieu de localhost
-  final String apiUrl = "https://pharmaci-backend.onrender.com/users/subscribe"; 
-
-  // --- LOGIQUE MÉTIER INTÉGRÉE (MODULE API) ---
+  // --- LOGIQUE MÉTIER ---
   Future<void> _souscrire() async {
     setState(() => _isLoading = true);
 
-    try {
-      // 1. Récupération du Token (Stocké lors du Login)
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('token'); // Assurez-vous que la clé est bien 'token'
+    // Appel réel au Backend
+    bool succes = await _userService.souscrireAbonnement(1);
 
-      if (token == null) {
-        throw Exception("Vous n'êtes pas connecté. Veuillez vous reconnecter.");
-      }
+    if (!mounted) return;
+    setState(() => _isLoading = false);
 
-      // 2. Appel API Réel vers le Backend NestJS
-      final response = await http.post(
-        Uri.parse(apiUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token', // Envoi du token JWT
-        },
-        body: jsonEncode({
-          'plan': 'SANTE_PLUS', // Donnée envoyée au backend
-          'montant': 5000,
-          'moyenPaiement': 'WAVE_CI' // Simulation
-        }),
-      );
-
-      // 3. Traitement de la réponse
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        // Succès : On met à jour le profil localement si nécessaire
-        await prefs.setBool('isPremium', true);
-        _afficherSucces();
-      } else {
-        // Erreur serveur (ex: fonds insuffisants, token expiré)
-        final errorBody = jsonDecode(response.body);
-        throw Exception(errorBody['message'] ?? "Erreur lors de l'abonnement");
-      }
-
-    } catch (e) {
-      // Gestion des erreurs (Réseau, etc.)
+    if (succes) {
+      _afficherSucces();
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Échec : ${e.toString().replaceAll('Exception: ', '')}"),
+        const SnackBar(
+          content: Text("Échec de l'abonnement. Vérifiez votre connexion ou connectez-vous."),
           backgroundColor: Colors.redAccent,
           behavior: SnackBarBehavior.floating,
         ),
       );
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // --- INTERFACE UTILISATEUR (MODULE UI) ---
+  // --- UI ---
   void _afficherSucces() {
     showDialog(
       context: context,
@@ -123,7 +91,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // HEADER DESIGN
+            // HEADER
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(30),
@@ -154,7 +122,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
             const SizedBox(height: 30),
 
-            // LISTE DES AVANTAGES
+            // AVANTAGES
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
@@ -168,7 +136,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
             const SizedBox(height: 40),
 
-            // CARTE DE PRIX
+            // PRIX
             Container(
               padding: const EdgeInsets.all(20),
               margin: const EdgeInsets.symmetric(horizontal: 20),
@@ -194,7 +162,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
             const SizedBox(height: 30),
 
-            // BOUTON D'ACTION
+            // BOUTON
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: SizedBox(
@@ -216,10 +184,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                 ),
               ),
             ),
-
-            const SizedBox(height: 20),
-            const Text("Annulable à tout moment.", style: TextStyle(color: Colors.grey, fontSize: 12)),
-            const SizedBox(height: 30),
+            const SizedBox(height: 50),
           ],
         ),
       ),
