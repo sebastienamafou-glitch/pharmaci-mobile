@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_typeahead/flutter_typeahead.dart';
 import 'package:url_launcher/url_launcher.dart'; // Pour la politique de confidentialité
+import 'splash_screen.dart'; // ✅ À AJOUTER ICI
 
 // Importations locales
 import 'api_service.dart';
@@ -31,7 +32,7 @@ class PharmaCiApp extends StatelessWidget {
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
       ),
-      home: const HomePage(),
+      home: const SplashScreen(),
     );
   }
 }
