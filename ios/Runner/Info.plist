@@ -49,8 +49,17 @@
     <key>NSCameraUsageDescription</key>
     <string>Nous avons besoin de la caméra pour scanner vos ordonnances.</string>
     <key>NSPhotoLibraryUsageDescription</key>
-    <string>Nous avons besoin d'accéder à la galerie pour charger une ordonnance.</string>
-    <key>NSMicrophoneUsageDescription</key>
-    <string>Non utilisé, mais requis par les librairies de caméra.</string>
+    <string>Nous avons besoin d'accéder à la galerie pour importer vos ordonnances.</string>
+    
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Nous utilisons votre position pour trouver les pharmacies et hubs les plus proches.</string>
+    <key>NSLocationAlwaysUsageDescription</key>
+    <string>Votre position est nécessaire pour le suivi de la livraison de vos médicaments.</string>
+
+    <key>LSApplicationQueriesSchemes</key>
+    <array>
+      <string>https</string>
+      <string>http</string>
+    </array>
 </dict>
 </plist>

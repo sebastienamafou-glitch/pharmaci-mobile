@@ -1,21 +1,51 @@
 import 'dart:convert';
+import 'package:flutter/material.dart'; // Ajouté pour le BuildContext et la navigation
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'auth_screen.dart'; // Import nécessaire pour la redirection automatique
 
 class ApiService {
-  // ✅ Remplacez par votre URL (si émulateur Android: 'http://10.0.2.2:3000')
   static const String baseUrl = 'https://pharmaci-backend.onrender.com';
 
   static String? token; 
   static String? nomUtilisateur;
 
-  // Clés de stockage
   static const String _keyToken = 'token';
   static const String _keyNom = 'nom';
 
   // ==========================================================
-  // 💾 GESTION DU STOCKAGE LOCAL (Persistance)
+  // 🔐 GESTION DE LA SÉCURITÉ & INTERCEPTION
+  // ==========================================================
+
+  /// Prépare les en-têtes pour chaque requête
+  static Map<String, String> _getHeaders() {
+    return {
+      'Content-Type': 'application/json',
+      if (token != null) 'Authorization': 'Bearer $token',
+    };
+  }
+
+  /// Vérifie si la réponse du serveur indique une session expirée (401)
+  static void verifierReponse(http.Response response, BuildContext context) {
+    if (response.statusCode == 401) {
+      logout(); // Efface les données locales
+      
+      // Redirige l'utilisateur vers la page de connexion et vide l'historique
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const AuthScreen()),
+        (route) => false,
+      );
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Votre session a expiré. Veuillez vous reconnecter.")),
+      );
+    }
+  }
+
+  // ==========================================================
+  // 💾 STOCKAGE LOCAL
   // ==========================================================
 
   static Future<void> loadToken() async {
@@ -47,7 +77,7 @@ class ApiService {
   }
   
   // ==========================================================
-  // 🔐 AUTHENTIFICATION
+  // 🔑 AUTHENTIFICATION
   // ==========================================================
 
   Future<bool> inscription(String nom, String telephone, String password) async {
@@ -79,13 +109,35 @@ class ApiService {
   }
 
   // ==========================================================
-  // 📍 CARTE & PHARMACIES
+  // 🔍 RECHERCHE & PHARMACIES (Requiert BuildContext pour la sécurité)
   // ==========================================================
 
-  Future<List<Pharmacie>> trouverProches(LatLng position, {int rayon = 5000}) async {
+  Future<List<Medicament>> rechercherMedicaments(String query, BuildContext context) async {
+    if (query.length < 2) return [];
+
+    final url = Uri.parse('$baseUrl/medicaments/recherche?q=$query');
+    
+    try {
+      final response = await http.get(url, headers: _getHeaders());
+      
+      // ✅ Intercepteur : vérifie si le token est encore valide
+      verifierReponse(response, context);
+
+      if (response.statusCode == 200) {
+         final dynamic data = json.decode(response.body);
+         List<dynamic> listeHits = (data is List) ? data : (data['hits'] ?? []);
+         return listeHits.map((json) => Medicament.fromJson(json)).toList();
+      }
+      return [];
+    } catch (e) { return []; }
+  }
+
+  Future<List<Pharmacie>> trouverProches(LatLng position, BuildContext context, {int rayon = 5000}) async {
     final url = Uri.parse('$baseUrl/pharmacies/proche?lat=${position.latitude}&lon=${position.longitude}&rayon=$rayon');
     try {
-      final response = await http.get(url);
+      final response = await http.get(url, headers: _getHeaders());
+      verifierReponse(response, context);
+
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
         return data.map((json) => Pharmacie.fromJson(json)).toList();
@@ -95,39 +147,11 @@ class ApiService {
   }
 
   // ==========================================================
-  // 🔍 RECHERCHE INTELLIGENTE
-  // ==========================================================
-
-  Future<List<Medicament>> rechercherMedicaments(String query) async {
-    if (query.length < 2) return [];
-
-    final url = Uri.parse('$baseUrl/medicaments/recherche?q=$query');
-    
-    try {
-      final response = await http.get(url);
-      
-      if (response.statusCode == 200) {
-         final dynamic data = json.decode(response.body);
-         
-         List<dynamic> listeHits = [];
-         if (data is List) {
-           listeHits = data;
-         } else if (data['hits'] != null) {
-           listeHits = data['hits'];
-         }
-
-         return listeHits.map((json) => Medicament.fromJson(json)).toList();
-      }
-      return [];
-    } catch (e) { return []; }
-  }
-
-  // ==========================================================
   // 📦 COMMANDES
   // ==========================================================
 
-  // ✅ CORRECTION : Utilisation de paramètres nommés {} pour éviter les confusions
   Future<String?> envoyerDemande(
+    BuildContext context,
     String nomMedicament, 
     LatLng position, 
     String modePaiement,
@@ -138,15 +162,10 @@ class ApiService {
 
     final url = Uri.parse('$baseUrl/demandes');
     
-    final headers = {
-      'Content-Type': 'application/json',
-      if (token != null) 'Authorization': 'Bearer $token',
-    };
-
     try {
       final response = await http.post(
         url,
-        headers: headers,
+        headers: _getHeaders(),
         body: json.encode({
           'medicament': nomMedicament,
           'lat': position.latitude,
@@ -157,6 +176,8 @@ class ApiService {
         }),
       );
       
+      verifierReponse(response, context);
+
       if (response.statusCode == 201 || response.statusCode == 200) {
         final data = json.decode(response.body);
         return data['id'];

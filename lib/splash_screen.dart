@@ -42,7 +42,7 @@ class _SplashScreenState extends State<SplashScreen> {
             SizedBox(
               height: 150, // Ajustez la taille ici si besoin
               child: Image.asset(
-                'assets/images/logo.png',
+                'assets/images/logo_webappci.png',
                 fit: BoxFit.contain,
               ),
             ),

@@ -46,6 +46,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     try {
       // ✅ 3. APPEL CORRIGÉ : On utilise les paramètres nommés pour repere et priorite
       final String? commandeId = await _apiService.envoyerDemande(
+        context,
         widget.medicamentNom,
         widget.positionClient,
         _selectedPaymentMethod,

@@ -11,9 +11,12 @@ dependencies:
   flutter:
     sdk: flutter
   
+  # ✅ Correction ici : url_launcher est bien aligné avec flutter
+  url_launcher: ^6.3.1
+
   # --- Réseau & Stockage ---
   http: ^1.1.0
-  shared_preferences: ^2.5.4 # ✅ Ajouté pour gérer le Token et l'Abonnement
+  shared_preferences: ^2.5.4
 
   # --- Icônes ---
   cupertino_icons: ^1.0.8
@@ -40,5 +43,5 @@ flutter:
   uses-material-design: true
   
   assets:
-    - .env  # ✅ AJOUT ICI
     - assets/images/
+    - assets/images/logo_webappci.png
