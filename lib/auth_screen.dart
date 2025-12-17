@@ -86,7 +86,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 child: SizedBox(
                   height: 120, // Une taille un peu plus petite que sur le splash screen
                   child: Image.asset(
-                    'assets/images/logo_webappci.png',
+                    'assets/images/logo.png',
                     fit: BoxFit.contain,
                   ),
                 ),

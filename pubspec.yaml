@@ -43,5 +43,6 @@ flutter:
   uses-material-design: true
   
   assets:
-    - assets/images/
-    - assets/images/logo_webappci.png
+    - assets/images/                   # ✅ Inclut tout le dossier par défaut
+    - assets/images/logo.png           # ✅ Logo PharmaCi (Produit)
+    - assets/images/logo_webappci.png  # ✅ Logo WebappCi (Développeur)
