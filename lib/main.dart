@@ -4,7 +4,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_typeahead/flutter_typeahead.dart';
 
-// Nos écrans et services
+
 import 'api_service.dart';
 import 'checkout_screen.dart'; 
 import 'scanner_screen.dart';  
@@ -44,7 +44,7 @@ class _HomePageState extends State<HomePage> {
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  // Position par défaut (Abidjan)
+  // Position par défaut
   LatLng userPosition = LatLng(5.345317, -4.024429);
   bool _isGpsActive = false;
   List<Marker> markers = [];
@@ -55,12 +55,10 @@ class _HomePageState extends State<HomePage> {
     _obtenirPositionEtCharger();
   }
 
-  // --- 1. GESTION ROBUSTE DU GPS ---
   Future<void> _obtenirPositionEtCharger() async {
     bool serviceEnabled;
     LocationPermission permission;
 
-    // Vérifie si le GPS est allumé
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       _afficherMessage("Veuillez activer le GPS pour la livraison.");
@@ -81,10 +79,9 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    // On récupère la position précise
     try {
       Position positionReelle = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high // Précision maximale pour la livraison
+        desiredAccuracy: LocationAccuracy.high 
       );
 
       if (!mounted) return;
@@ -93,7 +90,6 @@ class _HomePageState extends State<HomePage> {
         _isGpsActive = true;
         userPosition = LatLng(positionReelle.latitude, positionReelle.longitude);
         _updateMarker();
-        // On bouge la caméra sur l'utilisateur
         mapController.move(userPosition, 15.0);
       });
     } catch (e) {
@@ -123,7 +119,7 @@ class _HomePageState extends State<HomePage> {
     if (_isGpsActive) {
       mapController.move(userPosition, 16.0);
     } else {
-      _obtenirPositionEtCharger(); // Réessaie d'activer le GPS
+      _obtenirPositionEtCharger(); 
     }
   }
 
@@ -132,18 +128,18 @@ class _HomePageState extends State<HomePage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  // --- 2. NAVIGATION ET PASSAGE DE DONNÉES ---
+  // --- NAVIGATION ---
   void _lancerCommande(String nomMedicament) {
     if (nomMedicament.isEmpty) return;
     searchController.clear();
     
-    // ✅ CRITIQUE : On passe la position GPS à l'écran suivant
+    // ✅ PASSAGE DE DONNÉES CORRECT
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => CheckoutScreen(
           medicamentNom: nomMedicament,
-          positionClient: userPosition, // <--- C'est ici que tout se joue
+          positionClient: userPosition, // ✅ Utilise le nom 'positionClient' défini dans CheckoutScreen
         ),
       ),
     );
@@ -159,22 +155,19 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // --- UI ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      drawer: _buildDrawer(), // Code extrait plus bas pour lisibilité
+      drawer: _buildDrawer(),
       
       body: Stack(
         children: [
-          // 1. Fond de carte
           FlutterMap(
             mapController: mapController,
             options: MapOptions(
               initialCenter: userPosition,
               initialZoom: 13.0,
-              // Empêche de trop dézoomer (expérience client)
               minZoom: 10.0, 
               maxZoom: 18.0,
             ),
@@ -186,20 +179,14 @@ class _HomePageState extends State<HomePage> {
               MarkerLayer(markers: markers),
             ],
           ),
-
-          // 2. Barre de recherche (Top 50)
           Positioned(
             top: 50, left: 15, right: 15,
             child: _buildSearchBar(),
           ),
-
-          // 3. Bannière Pub (Top 130)
           const Positioned(
             top: 130, left: 0, right: 0,
             child: AdsBanner(),
           ),
-
-          // 4. ✅ AJOUT : Bouton de Recentrage GPS (Bas Droite)
           Positioned(
             bottom: 100,
             right: 20,
@@ -222,8 +209,6 @@ class _HomePageState extends State<HomePage> {
       ),
     ); 
   }
-
-  // --- WIDGETS EXTRAITS (Pour garder le code propre) ---
 
   Widget _buildSearchBar() {
     return Card(
@@ -309,9 +294,7 @@ class _HomePageState extends State<HomePage> {
             ListTile(
               leading: const Icon(Icons.exit_to_app, color: Colors.red),
               title: const Text("Déconnexion"),
-              onTap: () { 
-                // Logique de déconnexion ici
-              },
+              onTap: () {},
             ),
           ],
         ),

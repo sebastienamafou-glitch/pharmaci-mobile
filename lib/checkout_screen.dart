@@ -1,17 +1,15 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:latlong2/latlong.dart'; // ✅ Import nécessaire pour le GPS
-import 'api_service.dart'; // ✅ Import pour récupérer le Token et l'URL
+import 'package:latlong2/latlong.dart';
+import 'api_service.dart'; 
 
 class CheckoutScreen extends StatefulWidget {
   final String medicamentNom;
-  final LatLng positionClient; // ✅ On reçoit la vraie position GPS
+  final LatLng positionClient; // Le paramètre s'appelle bien positionClient
 
   const CheckoutScreen({
     super.key, 
     required this.medicamentNom,
-    required this.positionClient, // ✅ Requis pour la livraison
+    required this.positionClient,
   });
 
   @override
@@ -20,10 +18,10 @@ class CheckoutScreen extends StatefulWidget {
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
   final TextEditingController _repereController = TextEditingController();
+  final ApiService _apiService = ApiService(); // ✅ Instance du service
   
   bool _isUrgent = false;
   bool _isLoading = false;
-  
   String _selectedPaymentMethod = 'ESPECES'; 
 
   Future<void> envoyerCommande() async {
@@ -35,7 +33,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
 
-    // 2. Vérification de la connexion (Sécurité)
+    // 2. Vérification Token
     if (ApiService.token == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Erreur: Vous n'êtes pas connecté.")),
@@ -46,33 +44,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     setState(() { _isLoading = true; });
 
     try {
-      // 3. Construction de l'URL (Basée sur ApiService pour éviter les erreurs)
-      final url = Uri.parse('${ApiService.baseUrl}/demandes');
-
-      // 4. Envoi de la requête
-      final response = await http.post(
-        url,
-        // ✅ CORRECTION CRITIQUE : Ajout du Token dans le Header
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": "Bearer ${ApiService.token}",
-        },
-        body: jsonEncode({
-          "medicament": widget.medicamentNom,
-          // ✅ CORRECTION CRITIQUE : Utilisation du vrai GPS
-          "lat": widget.positionClient.latitude,
-          "lon": widget.positionClient.longitude,
-          "modePaiement": _selectedPaymentMethod,
-          "pointDeRepere": _repereController.text,
-          "priorite": _isUrgent ? "URGENT" : "STANDARD"
-        }),
+      // ✅ 3. APPEL CORRIGÉ : On utilise les paramètres nommés pour repere et priorite
+      final String? commandeId = await _apiService.envoyerDemande(
+        widget.medicamentNom,
+        widget.positionClient,
+        _selectedPaymentMethod,
+        pointDeRepere: _repereController.text, // <--- Paramètre nommé
+        priorite: _isUrgent ? 'URGENT' : 'STANDARD', // <--- Paramètre nommé
       );
 
-      if (response.statusCode == 201 || response.statusCode == 200) {
+      if (commandeId != null) {
         _afficherSucces();
       } else {
-        // Gestion des erreurs backend
-        throw Exception("Erreur ${response.statusCode}: Impossible de commander.");
+        throw Exception("Echec de l'envoi. Vérifiez votre connexion.");
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -96,9 +80,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text("Commande Validée ! ✅"),
         content: Text(
-            "Votre demande a été transmise au hub le plus proche.\n\n"
+            "Votre demande a été transmise.\n\n"
             "$messagePaiement\n\n"
-            "Un livreur va vous être assigné."),
+            "Un livreur est en route."),
         actions: [
           TextButton(
             onPressed: () {
@@ -153,7 +137,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Récapitulatif Médicament
             Container(
               padding: const EdgeInsets.all(15),
               decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(10)),
@@ -165,7 +148,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ],
               ),
             ),
-            
             const SizedBox(height: 25),
             const Text("📍 Point de Repère", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 10),
@@ -178,7 +160,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 filled: true,
               ),
             ),
-
             const SizedBox(height: 25),
             const Text("⚡ Urgence", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             SwitchListTile(
@@ -187,10 +168,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               activeColor: Colors.red,
               onChanged: (v) => setState(() => _isUrgent = v),
             ),
-
             const SizedBox(height: 25),
-            
-            // SECTION PAIEMENT
             const Text("💳 Moyen de Paiement", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 15),
             Row(
@@ -202,9 +180,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 _buildPaymentOption("MTN", "MTN", Colors.yellow[800]!, Icons.network_cell),
               ],
             ),
-            
             const SizedBox(height: 40),
-
             SizedBox(
               width: double.infinity,
               height: 55,

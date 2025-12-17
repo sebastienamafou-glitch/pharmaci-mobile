@@ -4,37 +4,44 @@ import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  // ✅ Votre URL Backend (Render)
+  // ✅ Remplacez par votre URL (si émulateur Android: 'http://10.0.2.2:3000')
   static const String baseUrl = 'https://pharmaci-backend.onrender.com';
 
   static String? token; 
   static String? nomUtilisateur;
 
+  // Clés de stockage
+  static const String _keyToken = 'token';
+  static const String _keyNom = 'nom';
+
   // ==========================================================
   // 💾 GESTION DU STOCKAGE LOCAL (Persistance)
   // ==========================================================
 
-  // 1. Charger le token au démarrage de l'app (appelé dans main.dart)
   static Future<void> loadToken() async {
     final prefs = await SharedPreferences.getInstance();
-    token = prefs.getString('auth_token');
-    nomUtilisateur = prefs.getString('auth_nom');
+    token = prefs.getString(_keyToken);
+    nomUtilisateur = prefs.getString(_keyNom);
   }
 
-  // 2. Sauvegarder le token après connexion réussie
   static Future<void> _saveToken(String newToken, String newNom) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('auth_token', newToken);
-    await prefs.setString('auth_nom', newNom);
+    await prefs.setString(_keyToken, newToken);
+    await prefs.setString(_keyNom, newNom);
     token = newToken;
     nomUtilisateur = newNom;
   }
 
-  // 3. Déconnecter (Effacer le token)
+  static Future<bool> estConnecte() async {
+    if (token != null) return true;
+    await loadToken();
+    return token != null;
+  }
+
   static Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('auth_token');
-    await prefs.remove('auth_nom');
+    await prefs.remove(_keyToken);
+    await prefs.remove(_keyNom);
     token = null;
     nomUtilisateur = null;
   }
@@ -64,10 +71,7 @@ class ApiService {
 
       if (response.statusCode == 201 || response.statusCode == 200) {
         final data = json.decode(response.body);
-        
-        // On sauvegarde pour la prochaine ouverture de l'app
         await _saveToken(data['access_token'], data['nom'] ?? 'Utilisateur');
-        
         return true;
       }
       return false;
@@ -78,8 +82,8 @@ class ApiService {
   // 📍 CARTE & PHARMACIES
   // ==========================================================
 
-  Future<List<Pharmacie>> trouverProches(LatLng position) async {
-    final url = Uri.parse('$baseUrl/pharmacies/proche?lat=${position.latitude}&lon=${position.longitude}');
+  Future<List<Pharmacie>> trouverProches(LatLng position, {int rayon = 5000}) async {
+    final url = Uri.parse('$baseUrl/pharmacies/proche?lat=${position.latitude}&lon=${position.longitude}&rayon=$rayon');
     try {
       final response = await http.get(url);
       if (response.statusCode == 200) {
@@ -91,7 +95,7 @@ class ApiService {
   }
 
   // ==========================================================
-  // 🔍 RECHERCHE INTELLIGENTE (MeiliSearch via Backend)
+  // 🔍 RECHERCHE INTELLIGENTE
   // ==========================================================
 
   Future<List<Medicament>> rechercherMedicaments(String query) async {
@@ -105,7 +109,6 @@ class ApiService {
       if (response.statusCode == 200) {
          final dynamic data = json.decode(response.body);
          
-         // Gestion flexible selon format de réponse (Tableau direct ou Objet { hits: [] })
          List<dynamic> listeHits = [];
          if (data is List) {
            listeHits = data;
@@ -116,17 +119,21 @@ class ApiService {
          return listeHits.map((json) => Medicament.fromJson(json)).toList();
       }
       return [];
-    } catch (e) {
-      return [];
-    }
+    } catch (e) { return []; }
   }
 
   // ==========================================================
   // 📦 COMMANDES
   // ==========================================================
 
-  Future<String?> envoyerDemande(String nomMedicament, LatLng position, String modePaiement) async {
-    // Si le token a été perdu en mémoire, on tente de le recharger
+  // ✅ CORRECTION : Utilisation de paramètres nommés {} pour éviter les confusions
+  Future<String?> envoyerDemande(
+    String nomMedicament, 
+    LatLng position, 
+    String modePaiement,
+    { String? pointDeRepere, String priorite = 'STANDARD' } 
+  ) async {
+    
     if (token == null) await loadToken();
 
     final url = Uri.parse('$baseUrl/demandes');
@@ -145,58 +152,22 @@ class ApiService {
           'lat': position.latitude,
           'lon': position.longitude,
           'modePaiement': modePaiement,
-          // Vous pouvez ajouter 'priorite': 'URGENT' ici si besoin via l'UI
+          'pointDeRepere': pointDeRepere ?? '',
+          'priorite': priorite,
         }),
       );
       
-      if (response.statusCode == 201) {
+      if (response.statusCode == 201 || response.statusCode == 200) {
         final data = json.decode(response.body);
         return data['id'];
       }
       return null;
     } catch (e) { return null; }
   }
-
-  Future<Map<String, dynamic>?> verifierDemandeComplete(String id) async {
-    final url = Uri.parse('$baseUrl/demandes/$id');
-    try {
-      if (token == null) await loadToken();
-      
-      final response = await http.get(
-        url,
-        headers: token != null ? {'Authorization': 'Bearer $token'} : {},
-      );
-      
-      if (response.statusCode == 200) {
-        return json.decode(response.body);
-      }
-    } catch (e) {}
-    return null;
-  }
-
-  // ==========================================================
-  // 🛣️ ITINÉRAIRE (OSRM)
-  // ==========================================================
-  
-  Future<List<LatLng>> getItineraire(LatLng depart, LatLng arrivee) async {
-    final url = Uri.parse(
-      'http://router.project-osrm.org/route/v1/driving/${depart.longitude},${depart.latitude};${arrivee.longitude},${arrivee.latitude}?overview=full&geometries=geojson'
-    );
-
-    try {
-      final response = await http.get(url);
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final List<dynamic> coords = data['routes'][0]['geometry']['coordinates'];
-        return coords.map((p) => LatLng(p[1].toDouble(), p[0].toDouble())).toList();
-      }
-    } catch (e) {}
-    return [];
-  }
 }
 
 // ==========================================================
-// 🧩 MODÈLES DE DONNÉES (Synchronisés avec Backend)
+// 🧩 MODÈLES DE DONNÉES
 // ==========================================================
 
 class Pharmacie {
@@ -205,14 +176,13 @@ class Pharmacie {
   Pharmacie({required this.id, required this.nom, required this.position});
   
   factory Pharmacie.fromJson(Map<String, dynamic> json) {
-    // Gestion du GeoJSON ou coordonnées plates
     final coords = json['position'] != null && json['position']['coordinates'] != null 
         ? json['position']['coordinates'] 
         : [0.0, 0.0];
     return Pharmacie(
       id: json['id']?.toString() ?? '0', 
       nom: json['nom'] ?? 'Pharmacie Partenaire', 
-      position: LatLng(coords[1], coords[0]) // Attention: GeoJSON est [Lon, Lat] -> LatLng est (Lat, Lon)
+      position: LatLng(coords[1], coords[0]) 
     );
   }
 }
@@ -223,7 +193,7 @@ class Medicament {
   final String dci;
   final String forme;
   final String dosage;
-  final num? prix; // Peut être null
+  final num? prix; 
 
   Medicament({
     required this.id, 
@@ -234,7 +204,6 @@ class Medicament {
     this.prix
   });
   
-  // Helpers pour l'affichage
   String get nom => "$nomCommercial $dosage"; 
   String get description => "$dci - $forme";
 
@@ -245,7 +214,6 @@ class Medicament {
       dci: json['dci'] ?? '', 
       forme: json['forme'] ?? '',
       dosage: json['dosage'] ?? '',
-      // Le backend envoie 'prixReference', on le mappe sur 'prix'
       prix: json['prixReference'] 
     );
   }
