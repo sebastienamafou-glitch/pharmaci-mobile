@@ -1,13 +1,18 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:latlong2/latlong.dart'; // ✅ Import nécessaire pour le GPS
+import 'api_service.dart'; // ✅ Import pour récupérer le Token et l'URL
 
 class CheckoutScreen extends StatefulWidget {
   final String medicamentNom;
+  final LatLng positionClient; // ✅ On reçoit la vraie position GPS
 
-  // ✅ CORRECTION ICI : On a retiré "required LatLng" qui causait l'erreur
-  // car main.dart n'envoie que le nom du médicament pour l'instant.
-  const CheckoutScreen({super.key, required this.medicamentNom});
+  const CheckoutScreen({
+    super.key, 
+    required this.medicamentNom,
+    required this.positionClient, // ✅ Requis pour la livraison
+  });
 
   @override
   State<CheckoutScreen> createState() => _CheckoutScreenState();
@@ -19,13 +24,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   bool _isUrgent = false;
   bool _isLoading = false;
   
-  // Gestion du mode de paiement
   String _selectedPaymentMethod = 'ESPECES'; 
 
-  // URL DE VOTRE BACKEND
-  final String backendUrl = "https://pharmaci-backend.onrender.com/demandes";
-
   Future<void> envoyerCommande() async {
+    // 1. Validation locale
     if (_repereController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Merci d'ajouter un point de repère.")),
@@ -33,20 +35,33 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
 
+    // 2. Vérification de la connexion (Sécurité)
+    if (ApiService.token == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Erreur: Vous n'êtes pas connecté.")),
+      );
+      return;
+    }
+
     setState(() { _isLoading = true; });
 
     try {
-      // Simulation GPS Abidjan (Puisque nous n'avons pas passé la position dans le constructeur)
-      double lat = 5.345317;
-      double lon = -4.024429;
+      // 3. Construction de l'URL (Basée sur ApiService pour éviter les erreurs)
+      final url = Uri.parse('${ApiService.baseUrl}/demandes');
 
+      // 4. Envoi de la requête
       final response = await http.post(
-        Uri.parse(backendUrl),
-        headers: { "Content-Type": "application/json" },
+        url,
+        // ✅ CORRECTION CRITIQUE : Ajout du Token dans le Header
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": "Bearer ${ApiService.token}",
+        },
         body: jsonEncode({
           "medicament": widget.medicamentNom,
-          "lat": lat,
-          "lon": lon,
+          // ✅ CORRECTION CRITIQUE : Utilisation du vrai GPS
+          "lat": widget.positionClient.latitude,
+          "lon": widget.positionClient.longitude,
           "modePaiement": _selectedPaymentMethod,
           "pointDeRepere": _repereController.text,
           "priorite": _isUrgent ? "URGENT" : "STANDARD"
@@ -56,7 +71,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (response.statusCode == 201 || response.statusCode == 200) {
         _afficherSucces();
       } else {
-        throw Exception("Erreur serveur : ${response.statusCode}");
+        // Gestion des erreurs backend
+        throw Exception("Erreur ${response.statusCode}: Impossible de commander.");
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -80,14 +96,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text("Commande Validée ! ✅"),
         content: Text(
-            "Votre demande a été transmise.\n\n"
+            "Votre demande a été transmise au hub le plus proche.\n\n"
             "$messagePaiement\n\n"
-            "Un livreur est en route."),
+            "Un livreur va vous être assigné."),
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.of(ctx).pop(); // Ferme la dialog
-              Navigator.of(ctx).pop(); // Revient à la carte (Home)
+              Navigator.of(ctx).pop(); 
+              Navigator.of(ctx).pop(); 
             },
             child: const Text("OK"),
           )
@@ -96,7 +112,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  // Widget pour créer une carte de paiement
   Widget _buildPaymentOption(String label, String id, Color color, IconData icon) {
     bool isSelected = _selectedPaymentMethod == id;
     return GestureDetector(
@@ -132,13 +147,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Paiement & Livraison"), backgroundColor: Colors.green[800], foregroundColor: Colors.white),
+      appBar: AppBar(title: const Text("Paiement & Livraison"), backgroundColor: Colors.teal, foregroundColor: Colors.white),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Récapitulatif
+            // Récapitulatif Médicament
             Container(
               padding: const EdgeInsets.all(15),
               decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(10)),
@@ -195,7 +210,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               height: 55,
               child: ElevatedButton(
                 onPressed: _isLoading ? null : envoyerCommande,
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700], foregroundColor: Colors.white),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
                 child: _isLoading 
                   ? const CircularProgressIndicator(color: Colors.white) 
                   : Text("PAYER ${_selectedPaymentMethod == 'ESPECES' ? 'A LA LIVRAISON' : 'MAINTENANT'}", 

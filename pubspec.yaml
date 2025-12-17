@@ -13,7 +13,7 @@ dependencies:
   
   # --- Réseau & Stockage ---
   http: ^1.1.0
-  shared_preferences: ^2.2.0 # ✅ Ajouté pour gérer le Token et l'Abonnement
+  shared_preferences: ^2.5.4 # ✅ Ajouté pour gérer le Token et l'Abonnement
 
   # --- Icônes ---
   cupertino_icons: ^1.0.8

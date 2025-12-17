@@ -10,7 +10,7 @@ import 'checkout_screen.dart';
 import 'scanner_screen.dart';  
 import 'strings.dart';
 import 'subscription_screen.dart';
-import 'ads_banner.dart'; // ✅ AJOUT : Import de la bannière
+import 'ads_banner.dart';
 
 void main() {
   runApp(const PharmaCiApp());
@@ -44,7 +44,9 @@ class _HomePageState extends State<HomePage> {
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  LatLng center = LatLng(5.3600, -4.0083);
+  // Position par défaut (Abidjan)
+  LatLng userPosition = LatLng(5.345317, -4.024429);
+  bool _isGpsActive = false;
   List<Marker> markers = [];
 
   @override
@@ -53,14 +55,15 @@ class _HomePageState extends State<HomePage> {
     _obtenirPositionEtCharger();
   }
 
-  // --- CARTE & GPS ---
+  // --- 1. GESTION ROBUSTE DU GPS ---
   Future<void> _obtenirPositionEtCharger() async {
     bool serviceEnabled;
     LocationPermission permission;
 
+    // Vérifie si le GPS est allumé
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      _chargerPharmacies();
+      _afficherMessage("Veuillez activer le GPS pour la livraison.");
       return;
     }
 
@@ -68,51 +71,80 @@ class _HomePageState extends State<HomePage> {
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        _chargerPharmacies();
+        _afficherMessage("La permission GPS est requise.");
         return;
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
-      _chargerPharmacies();
+      _afficherMessage("GPS refusé définitivement. Allez dans les paramètres.");
       return;
     }
 
-    Position positionReelle = await Geolocator.getCurrentPosition();
+    // On récupère la position précise
+    try {
+      Position positionReelle = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high // Précision maximale pour la livraison
+      );
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    setState(() {
-      center = LatLng(positionReelle.latitude, positionReelle.longitude);
-      mapController.move(center, 15.0);
-    });
-
-    _chargerPharmacies();
+      setState(() {
+        _isGpsActive = true;
+        userPosition = LatLng(positionReelle.latitude, positionReelle.longitude);
+        _updateMarker();
+        // On bouge la caméra sur l'utilisateur
+        mapController.move(userPosition, 15.0);
+      });
+    } catch (e) {
+      debugPrint("Erreur GPS: $e");
+    }
   }
 
-  void _chargerPharmacies() async {
-    if (!mounted) return;
-
+  void _updateMarker() {
     setState(() {
       markers = [
         Marker(
-          point: center,
+          point: userPosition,
           width: 80,
           height: 80,
-          child: const Icon(Icons.person_pin_circle, color: Colors.blue, size: 40),
+          child: const Column(
+            children: [
+               Icon(Icons.location_on, color: Colors.red, size: 40),
+               Text("Moi", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10)),
+            ],
+          ),
         ),
       ];
     });
   }
 
-  // --- NAVIGATION ---
+  void _recentrerCarte() {
+    if (_isGpsActive) {
+      mapController.move(userPosition, 16.0);
+    } else {
+      _obtenirPositionEtCharger(); // Réessaie d'activer le GPS
+    }
+  }
+
+  void _afficherMessage(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  // --- 2. NAVIGATION ET PASSAGE DE DONNÉES ---
   void _lancerCommande(String nomMedicament) {
     if (nomMedicament.isEmpty) return;
     searchController.clear();
+    
+    // ✅ CRITIQUE : On passe la position GPS à l'écran suivant
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => CheckoutScreen(medicamentNom: nomMedicament),
+        builder: (context) => CheckoutScreen(
+          medicamentNom: nomMedicament,
+          positionClient: userPosition, // <--- C'est ici que tout se joue
+        ),
       ),
     );
   }
@@ -132,37 +164,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            const UserAccountsDrawerHeader(
-              accountName: Text("Utilisateur"),
-              accountEmail: Text("+225 07 07 ..."),
-              currentAccountPicture: CircleAvatar(
-                  backgroundColor: Colors.white, child: Icon(Icons.person)),
-              decoration: BoxDecoration(color: Colors.teal),
-            ),
-            ListTile(
-              leading: const Icon(Icons.diamond, color: Colors.purple),
-              title: const Text("Offre Santé+ (Premium)"),
-              onTap: () {
-                Navigator.pop(context); 
-                Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const SubscriptionScreen()));
-              },
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.exit_to_app, color: Colors.red),
-              title: const Text("Déconnexion"),
-              onTap: () { },
-            ),
-          ],
-        ),
-      ),
+      drawer: _buildDrawer(), // Code extrait plus bas pour lisibilité
       
       body: Stack(
         children: [
@@ -170,8 +172,11 @@ class _HomePageState extends State<HomePage> {
           FlutterMap(
             mapController: mapController,
             options: MapOptions(
-              initialCenter: center,
+              initialCenter: userPosition,
               initialZoom: 13.0,
+              // Empêche de trop dézoomer (expérience client)
+              minZoom: 10.0, 
+              maxZoom: 18.0,
             ),
             children: [
               TileLayer(
@@ -182,108 +187,134 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
 
-          // 2. Barre de recherche (Positioned Top 50)
+          // 2. Barre de recherche (Top 50)
           Positioned(
-            top: 50,
-            left: 15,
-            right: 15,
-            child: Card(
-              elevation: 6,
-              shadowColor: Colors.black26,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TypeAheadField<Medicament>(
-                        controller: searchController,
-                        builder: (context, controller, focusNode) {
-                          return TextField(
-                            controller: controller,
-                            focusNode: focusNode,
-                            autofocus: false,
-                            style: const TextStyle(fontSize: 16),
-                            decoration: InputDecoration(
-                              hintText: AppStrings.searchHint,
-                              border: InputBorder.none,
-                              prefixIcon: IconButton(
-                                icon: const Icon(Icons.menu, color: Colors.teal),
-                                onPressed: () {
-                                  _scaffoldKey.currentState?.openDrawer();
-                                },
-                              ),
-                              suffixIcon: IconButton(
-                                icon: const Icon(Icons.camera_alt,
-                                    color: Colors.teal),
-                                tooltip: "Scanner une ordonnance",
-                                onPressed: _ouvrirScanner,
-                              ),
-                            ),
-                          );
-                        },
-                        suggestionsCallback: (pattern) async {
-                          return await api.rechercherMedicaments(pattern);
-                        },
-                        itemBuilder: (context, suggestion) {
-                          return ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: Colors.teal.shade50,
-                              child: const Icon(Icons.medication,
-                                  color: Colors.teal, size: 20),
-                            ),
-                            title: Text(suggestion.nom,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold)),
-                            trailing: Text(
-                                suggestion.prix != null
-                                    ? "${suggestion.prix} F"
-                                    : "",
-                                style: const TextStyle(
-                                    color: Colors.green,
-                                    fontWeight: FontWeight.bold)),
-                          );
-                        },
-                        onSelected: (suggestion) {
-                          searchController.text = suggestion.nom;
-                          _lancerCommande(suggestion.nom);
-                        },
-                        emptyBuilder: (context) => const Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Text('Aucun médicament trouvé.',
-                              style: TextStyle(color: Colors.grey)),
-                        ),
-                        loadingBuilder: (context) => const SizedBox(
-                          height: 60,
-                          child: Center(
-                              child: CircularProgressIndicator(
-                                  color: Colors.teal)),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            top: 50, left: 15, right: 15,
+            child: _buildSearchBar(),
           ),
 
-          // 3. ✅ AJOUT : Bannière Publicitaire (Positioned Top 130)
+          // 3. Bannière Pub (Top 130)
           const Positioned(
-            top: 130, 
-            left: 0, 
-            right: 0,
+            top: 130, left: 0, right: 0,
             child: AdsBanner(),
+          ),
+
+          // 4. ✅ AJOUT : Bouton de Recentrage GPS (Bas Droite)
+          Positioned(
+            bottom: 100,
+            right: 20,
+            child: FloatingActionButton.small(
+              backgroundColor: Colors.white,
+              onPressed: _recentrerCarte,
+              child: Icon(
+                Icons.my_location, 
+                color: _isGpsActive ? Colors.blue : Colors.grey
+              ),
+            ),
           ),
         ],
       ),
       
       floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.redAccent,
+        backgroundColor: Colors.teal,
         onPressed: _ouvrirScanner,
         child: const Icon(Icons.document_scanner, color: Colors.white),
       ),
     ); 
-  } 
+  }
+
+  // --- WIDGETS EXTRAITS (Pour garder le code propre) ---
+
+  Widget _buildSearchBar() {
+    return Card(
+      elevation: 6,
+      shadowColor: Colors.black26,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        child: Row(
+          children: [
+            Expanded(
+              child: TypeAheadField<Medicament>(
+                controller: searchController,
+                builder: (context, controller, focusNode) {
+                  return TextField(
+                    controller: controller,
+                    focusNode: focusNode,
+                    autofocus: false,
+                    style: const TextStyle(fontSize: 16),
+                    decoration: InputDecoration(
+                      hintText: "Rechercher (ex: Doliprane...)",
+                      border: InputBorder.none,
+                      prefixIcon: IconButton(
+                        icon: const Icon(Icons.menu, color: Colors.teal),
+                        onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+                      ),
+                      suffixIcon: const Icon(Icons.search, color: Colors.grey),
+                    ),
+                  );
+                },
+                suggestionsCallback: (pattern) async {
+                  return await api.rechercherMedicaments(pattern);
+                },
+                itemBuilder: (context, suggestion) {
+                  return ListTile(
+                    leading: const Icon(Icons.medication, color: Colors.teal),
+                    title: Text(suggestion.nom, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text(suggestion.description, style: const TextStyle(fontSize: 12)),
+                    trailing: Text(suggestion.prix != null ? "${suggestion.prix} F" : "", 
+                        style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                  );
+                },
+                onSelected: (suggestion) {
+                  searchController.text = suggestion.nom;
+                  _lancerCommande(suggestion.nom);
+                },
+                emptyBuilder: (context) => const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text('Aucun résultat.', style: TextStyle(color: Colors.grey)),
+                ),
+                loadingBuilder: (context) => const SizedBox(
+                  height: 60,
+                  child: Center(child: CircularProgressIndicator(color: Colors.teal)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDrawer() {
+    return Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            const UserAccountsDrawerHeader(
+              accountName: Text("PharmaCi Client"),
+              accountEmail: Text("Bienvenue"),
+              currentAccountPicture: CircleAvatar(backgroundColor: Colors.white, child: Icon(Icons.person, color: Colors.teal)),
+              decoration: BoxDecoration(color: Colors.teal),
+            ),
+            ListTile(
+              leading: const Icon(Icons.diamond, color: Colors.purple),
+              title: const Text("Offre Santé+ (Premium)"),
+              onTap: () {
+                Navigator.pop(context); 
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const SubscriptionScreen()));
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.exit_to_app, color: Colors.red),
+              title: const Text("Déconnexion"),
+              onTap: () { 
+                // Logique de déconnexion ici
+              },
+            ),
+          ],
+        ),
+      );
+  }
 }

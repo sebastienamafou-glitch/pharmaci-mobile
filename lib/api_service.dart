@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   // ✅ Votre URL Backend (Render)
@@ -9,7 +10,38 @@ class ApiService {
   static String? token; 
   static String? nomUtilisateur;
 
-  // --- AUTHENTIFICATION ---
+  // ==========================================================
+  // 💾 GESTION DU STOCKAGE LOCAL (Persistance)
+  // ==========================================================
+
+  // 1. Charger le token au démarrage de l'app (appelé dans main.dart)
+  static Future<void> loadToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    token = prefs.getString('auth_token');
+    nomUtilisateur = prefs.getString('auth_nom');
+  }
+
+  // 2. Sauvegarder le token après connexion réussie
+  static Future<void> _saveToken(String newToken, String newNom) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('auth_token', newToken);
+    await prefs.setString('auth_nom', newNom);
+    token = newToken;
+    nomUtilisateur = newNom;
+  }
+
+  // 3. Déconnecter (Effacer le token)
+  static Future<void> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('auth_token');
+    await prefs.remove('auth_nom');
+    token = null;
+    nomUtilisateur = null;
+  }
+  
+  // ==========================================================
+  // 🔐 AUTHENTIFICATION
+  // ==========================================================
 
   Future<bool> inscription(String nom, String telephone, String password) async {
     try {
@@ -32,15 +64,19 @@ class ApiService {
 
       if (response.statusCode == 201 || response.statusCode == 200) {
         final data = json.decode(response.body);
-        token = data['access_token'];
-        nomUtilisateur = data['nom'];
+        
+        // On sauvegarde pour la prochaine ouverture de l'app
+        await _saveToken(data['access_token'], data['nom'] ?? 'Utilisateur');
+        
         return true;
       }
       return false;
     } catch (e) { return false; }
   }
 
-  // --- CARTE & PHARMACIES ---
+  // ==========================================================
+  // 📍 CARTE & PHARMACIES
+  // ==========================================================
 
   Future<List<Pharmacie>> trouverProches(LatLng position) async {
     final url = Uri.parse('$baseUrl/pharmacies/proche?lat=${position.latitude}&lon=${position.longitude}');
@@ -54,23 +90,22 @@ class ApiService {
     } catch (e) { return []; }
   }
 
-  // --- RECHERCHE INTELLIGENTE (LIVE) ---
+  // ==========================================================
+  // 🔍 RECHERCHE INTELLIGENTE (MeiliSearch via Backend)
+  // ==========================================================
 
   Future<List<Medicament>> rechercherMedicaments(String query) async {
     if (query.length < 2) return [];
 
-    // ✅ VRAIE CONNEXION AU BACKEND NESTJS + MEILISEARCH
     final url = Uri.parse('$baseUrl/medicaments/recherche?q=$query');
     
     try {
       final response = await http.get(url);
       
       if (response.statusCode == 200) {
-         // Le backend renvoie : { "hits": [ ... ], ... } ou directement [ ... ] selon la config Meili
-         // Avec votre code backend actuel, il renvoie directement un tableau
          final dynamic data = json.decode(response.body);
          
-         // Gestion flexible (si Meili renvoie un objet wrapper ou une liste directe)
+         // Gestion flexible selon format de réponse (Tableau direct ou Objet { hits: [] })
          List<dynamic> listeHits = [];
          if (data is List) {
            listeHits = data;
@@ -82,14 +117,18 @@ class ApiService {
       }
       return [];
     } catch (e) {
-      print("Erreur recherche: $e");
       return [];
     }
   }
 
-  // --- COMMANDES ---
+  // ==========================================================
+  // 📦 COMMANDES
+  // ==========================================================
 
   Future<String?> envoyerDemande(String nomMedicament, LatLng position, String modePaiement) async {
+    // Si le token a été perdu en mémoire, on tente de le recharger
+    if (token == null) await loadToken();
+
     final url = Uri.parse('$baseUrl/demandes');
     
     final headers = {
@@ -106,12 +145,13 @@ class ApiService {
           'lat': position.latitude,
           'lon': position.longitude,
           'modePaiement': modePaiement,
+          // Vous pouvez ajouter 'priorite': 'URGENT' ici si besoin via l'UI
         }),
       );
       
       if (response.statusCode == 201) {
         final data = json.decode(response.body);
-        return data['id']; // Le backend doit renvoyer l'ID créé
+        return data['id'];
       }
       return null;
     } catch (e) { return null; }
@@ -120,7 +160,13 @@ class ApiService {
   Future<Map<String, dynamic>?> verifierDemandeComplete(String id) async {
     final url = Uri.parse('$baseUrl/demandes/$id');
     try {
-      final response = await http.get(url);
+      if (token == null) await loadToken();
+      
+      final response = await http.get(
+        url,
+        headers: token != null ? {'Authorization': 'Bearer $token'} : {},
+      );
+      
       if (response.statusCode == 200) {
         return json.decode(response.body);
       }
@@ -128,7 +174,9 @@ class ApiService {
     return null;
   }
 
-  // --- ITINERAIRE ---
+  // ==========================================================
+  // 🛣️ ITINÉRAIRE (OSRM)
+  // ==========================================================
   
   Future<List<LatLng>> getItineraire(LatLng depart, LatLng arrivee) async {
     final url = Uri.parse(
@@ -147,31 +195,35 @@ class ApiService {
   }
 }
 
-// --- MODÈLES DE DONNÉES MIS À JOUR ---
+// ==========================================================
+// 🧩 MODÈLES DE DONNÉES (Synchronisés avec Backend)
+// ==========================================================
 
 class Pharmacie {
   final String id, nom;
   final LatLng position;
   Pharmacie({required this.id, required this.nom, required this.position});
+  
   factory Pharmacie.fromJson(Map<String, dynamic> json) {
+    // Gestion du GeoJSON ou coordonnées plates
     final coords = json['position'] != null && json['position']['coordinates'] != null 
         ? json['position']['coordinates'] 
         : [0.0, 0.0];
     return Pharmacie(
       id: json['id']?.toString() ?? '0', 
       nom: json['nom'] ?? 'Pharmacie Partenaire', 
-      position: LatLng(coords[1], coords[0])
+      position: LatLng(coords[1], coords[0]) // Attention: GeoJSON est [Lon, Lat] -> LatLng est (Lat, Lon)
     );
   }
 }
 
 class Medicament {
   final int id;
-  final String nomCommercial; // Ex: DOLIPRANE
-  final String dci;           // Ex: Paracétamol
-  final String forme;         // Ex: Comprimé
-  final String dosage;        // Ex: 1000mg
-  final num? prix;            // Ex: 1500 (Peut être null)
+  final String nomCommercial;
+  final String dci;
+  final String forme;
+  final String dosage;
+  final num? prix; // Peut être null
 
   Medicament({
     required this.id, 
@@ -182,18 +234,19 @@ class Medicament {
     this.prix
   });
   
-  // Getter pour compatibilité avec l'ancien code si besoin
+  // Helpers pour l'affichage
   String get nom => "$nomCommercial $dosage"; 
   String get description => "$dci - $forme";
 
   factory Medicament.fromJson(Map<String, dynamic> json) {
     return Medicament(
       id: json['id'] is int ? json['id'] : int.tryParse(json['id'].toString()) ?? 0, 
-      nomCommercial: json['nomCommercial'] ?? json['nom'] ?? 'Inconnu', // Fallback si ancien format
+      nomCommercial: json['nomCommercial'] ?? json['nom'] ?? 'Inconnu',
       dci: json['dci'] ?? '', 
       forme: json['forme'] ?? '',
       dosage: json['dosage'] ?? '',
-      prix: json['prixReference'] // Le backend envoie 'prixReference'
+      // Le backend envoie 'prixReference', on le mappe sur 'prix'
+      prix: json['prixReference'] 
     );
   }
 }
